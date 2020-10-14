@@ -3151,6 +3151,7 @@ srtp_err_status_t srtp_update_stream(srtp_t session,
  *
  * The default policy is defined in RFC 3711
  * (Section 5. Default and mandatory-to-implement Transforms)
+ * https://tools.ietf.org/html/rfc3711#section-5
  *
  */
 
@@ -3188,6 +3189,7 @@ void srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(srtp_crypto_policy_t *p)
      * corresponds to RFC 4568
      *
      * note that this crypto policy is intended for SRTP, but not SRTCP
+     * https://tools.ietf.org/html/rfc4568#section-6.2
      */
 
     p->cipher_type = SRTP_AES_ICM_128;
