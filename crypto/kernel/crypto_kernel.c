@@ -277,7 +277,7 @@ static inline srtp_err_status_t srtp_crypto_kernel_do_load_cipher_type(
     srtp_cipher_type_id_t id,
     int replace)
 {
-    srtp_kernel_cipher_type_t *ctype, *new_ctype;
+    srtp_kernel_cipher_type_t *ctype, *new_ctype = NULL;
     srtp_err_status_t status;
 
     /* defensive coding */
