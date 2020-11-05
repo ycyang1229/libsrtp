@@ -63,6 +63,17 @@ typedef struct {
 
 #endif /* OPENSSL */
 
+#ifdef MBEDTLS
+
+typedef struct {
+    v128_t counter; /* holds the counter value          */
+    v128_t offset;  /* initial offset value             */
+    int key_size;
+    mbedtls_aes_context *ctx;
+} srtp_aes_icm_ctx_t;
+
+#endif /* MBEDTLS */
+
 #ifdef NSS
 
 #include <nss.h>

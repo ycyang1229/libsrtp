@@ -1,5 +1,5 @@
 /*
- * aes_icm_ossl.c
+ * aes_icm_mbedtls.c
  *
  * AES Integer Counter Mode
  *
@@ -51,8 +51,10 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
-
-#include <openssl/evp.h>
+// #YC_TBD.
+//#include <openssl/evp.h>
+// https://tls.mbed.org/api/aes_8h.html#a375c98cba4c5806d3a39c7d1e1e226da
+#include <mbedtls/aes.h>
 #include "aes_icm_ext.h"
 #include "crypto_types.h"
 #include "err.h" /* for srtp_debug */
@@ -60,7 +62,7 @@
 #include "cipher_types.h"
 
 srtp_debug_module_t srtp_mod_aes_icm = {
-    0,             /* debugging is off by default */
+    0,                /* debugging is off by default */
     "aes icm mbedtls" /* printable module name       */
 };
 
@@ -136,8 +138,10 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_alloc(srtp_cipher_t **c,
         *c = NULL;
         return srtp_err_status_alloc_fail;
     }
-
-    icm->ctx = EVP_CIPHER_CTX_new();
+    // #YC_TBD.
+    // icm->ctx = EVP_CIPHER_CTX_new();
+    icm->ctx =
+        (mbedtls_aes_context *)srtp_crypto_alloc(sizeof(mbedtls_aes_context));
     if (icm->ctx == NULL) {
         srtp_crypto_free(icm);
         srtp_crypto_free(*c);
@@ -176,7 +180,7 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_alloc(srtp_cipher_t **c,
 /*
  * This function deallocates an instance of this engine
  */
-static srtp_err_status_t srtp_aes_icm_openssl_dealloc(srtp_cipher_t *c)
+static srtp_err_status_t srtp_aes_icm_mbedtls_dealloc(srtp_cipher_t *c)
 {
     srtp_aes_icm_ctx_t *ctx;
 
@@ -189,7 +193,9 @@ static srtp_err_status_t srtp_aes_icm_openssl_dealloc(srtp_cipher_t *c)
      */
     ctx = (srtp_aes_icm_ctx_t *)c->state;
     if (ctx != NULL) {
-        EVP_CIPHER_CTX_free(ctx->ctx);
+        // #YC_TBD.
+        // EVP_CIPHER_CTX_free(ctx->ctx);
+        srtp_crypto_free(ctx->ctx);
         /* zeroize the key material */
         octet_string_set_to_zero(ctx, sizeof(srtp_aes_icm_ctx_t));
         srtp_crypto_free(ctx);
@@ -210,7 +216,7 @@ static srtp_err_status_t srtp_aes_icm_openssl_dealloc(srtp_cipher_t *c)
  * the salt is unpredictable (but not necessarily secret) data which
  * randomizes the starting point in the keystream
  */
-static srtp_err_status_t srtp_aes_icm_openssl_context_init(void *cv,
+static srtp_err_status_t srtp_aes_icm_mbedtls_context_init(void *cv,
                                                            const uint8_t *key)
 {
     srtp_aes_icm_ctx_t *c = (srtp_aes_icm_ctx_t *)cv;
@@ -232,7 +238,10 @@ static srtp_err_status_t srtp_aes_icm_openssl_context_init(void *cv,
     debug_print(srtp_mod_aes_icm, "key:  %s",
                 srtp_octet_string_hex_string(key, c->key_size));
     debug_print(srtp_mod_aes_icm, "offset: %s", v128_hex_string(&c->offset));
+    // #YC_TBD.
 
+    // mbedtls_aes_setkey_enc
+    // mbedtls_aes_crypt_ctr
     switch (c->key_size) {
     case SRTP_AES_256_KEY_LEN:
         evp = EVP_aes_256_ctr();
@@ -247,13 +256,17 @@ static srtp_err_status_t srtp_aes_icm_openssl_context_init(void *cv,
         return srtp_err_status_bad_param;
         break;
     }
-
-    EVP_CIPHER_CTX_cleanup(c->ctx);
-    if (!EVP_EncryptInit_ex(c->ctx, evp, NULL, key, NULL)) {
-        return srtp_err_status_fail;
-    } else {
-        return srtp_err_status_ok;
-    }
+    //# YC_TBD.
+    // EVP_CIPHER_CTX_cleanup(c->ctx);
+    mbedtls_aes_free(c->ctx);
+    // mbedtls_aes_init
+    mbedtls_aes_init(c->ctx);
+    // set key
+    // if (!EVP_EncryptInit_ex(c->ctx, evp, NULL, key, NULL)) {
+    //    return srtp_err_status_fail;
+    //} else {
+    //    return srtp_err_status_ok;
+    //}
 
     return srtp_err_status_ok;
 }
@@ -262,7 +275,7 @@ static srtp_err_status_t srtp_aes_icm_openssl_context_init(void *cv,
  * aes_icm_set_iv(c, iv) sets the counter value to the exor of iv with
  * the offset
  */
-static srtp_err_status_t srtp_aes_icm_openssl_set_iv(
+static srtp_err_status_t srtp_aes_icm_mbedtls_set_iv(
     void *cv,
     uint8_t *iv,
     srtp_cipher_direction_t dir)
@@ -279,7 +292,8 @@ static srtp_err_status_t srtp_aes_icm_openssl_set_iv(
 
     debug_print(srtp_mod_aes_icm, "set_counter: %s",
                 v128_hex_string(&c->counter));
-
+    // https://wiki.openssl.org/index.php/EVP_Symmetric_Encryption_and_Decryption
+    // set iv.
     if (!EVP_EncryptInit_ex(c->ctx, NULL, NULL, NULL, c->counter.v8)) {
         return srtp_err_status_fail;
     } else {
@@ -295,7 +309,7 @@ static srtp_err_status_t srtp_aes_icm_openssl_set_iv(
  *	buf	data to encrypt
  *	enc_len	length of encrypt buffer
  */
-static srtp_err_status_t srtp_aes_icm_openssl_encrypt(void *cv,
+static srtp_err_status_t srtp_aes_icm_mbedtls_encrypt(void *cv,
                                                       unsigned char *buf,
                                                       unsigned int *enc_len)
 {
@@ -308,7 +322,17 @@ static srtp_err_status_t srtp_aes_icm_openssl_encrypt(void *cv,
         return srtp_err_status_cipher_fail;
     }
     *enc_len = len;
-
+    // mbedtls_aes_crypt_ctr
+    /**
+     *
+    int mbedtls_aes_crypt_ctr( mbedtls_aes_context *ctx,
+                       size_t length,
+                       size_t *nc_off,
+                       unsigned char nonce_counter[16],
+                       unsigned char stream_block[16],
+                       const unsigned char *input,
+                       unsigned char *output );
+    */
     if (!EVP_EncryptFinal_ex(c->ctx, buf + len, &len)) {
         return srtp_err_status_cipher_fail;
     }
@@ -320,12 +344,12 @@ static srtp_err_status_t srtp_aes_icm_openssl_encrypt(void *cv,
 /*
  * Name of this crypto engine
  */
-static const char srtp_aes_icm_128_openssl_description[] =
-    "AES-128 counter mode using openssl";
-static const char srtp_aes_icm_192_openssl_description[] =
-    "AES-192 counter mode using openssl";
-static const char srtp_aes_icm_256_openssl_description[] =
-    "AES-256 counter mode using openssl";
+static const char srtp_aes_icm_128_mbedtls_description[] =
+    "AES-128 counter mode using mbedtls";
+static const char srtp_aes_icm_192_mbedtls_description[] =
+    "AES-192 counter mode using mbedtls";
+static const char srtp_aes_icm_256_mbedtls_description[] =
+    "AES-256 counter mode using mbedtls";
 
 /*
  * KAT values for AES self-test.  These
@@ -491,15 +515,15 @@ static const srtp_cipher_test_case_t srtp_aes_icm_256_test_case_0 = {
  * note: the encrypt function is identical to the decrypt function
  */
 const srtp_cipher_type_t srtp_aes_icm_128 = {
-    srtp_aes_icm_openssl_alloc,           /* */
-    srtp_aes_icm_openssl_dealloc,         /* */
-    srtp_aes_icm_openssl_context_init,    /* */
+    srtp_aes_icm_mbedtls_alloc,           /* */
+    srtp_aes_icm_mbedtls_dealloc,         /* */
+    srtp_aes_icm_mbedtls_context_init,    /* */
     0,                                    /* set_aad */
-    srtp_aes_icm_openssl_encrypt,         /* */
-    srtp_aes_icm_openssl_encrypt,         /* */
-    srtp_aes_icm_openssl_set_iv,          /* */
+    srtp_aes_icm_mbedtls_encrypt,         /* */
+    srtp_aes_icm_mbedtls_encrypt,         /* */
+    srtp_aes_icm_mbedtls_set_iv,          /* */
     0,                                    /* get_tag */
-    srtp_aes_icm_128_openssl_description, /* */
+    srtp_aes_icm_128_mbedtls_description, /* */
     &srtp_aes_icm_128_test_case_0,        /* */
     SRTP_AES_ICM_128                      /* */
 };
@@ -509,15 +533,15 @@ const srtp_cipher_type_t srtp_aes_icm_128 = {
  * note: the encrypt function is identical to the decrypt function
  */
 const srtp_cipher_type_t srtp_aes_icm_192 = {
-    srtp_aes_icm_openssl_alloc,           /* */
-    srtp_aes_icm_openssl_dealloc,         /* */
-    srtp_aes_icm_openssl_context_init,    /* */
+    srtp_aes_icm_mbedtls_alloc,           /* */
+    srtp_aes_icm_mbedtls_dealloc,         /* */
+    srtp_aes_icm_mbedtls_context_init,    /* */
     0,                                    /* set_aad */
-    srtp_aes_icm_openssl_encrypt,         /* */
-    srtp_aes_icm_openssl_encrypt,         /* */
-    srtp_aes_icm_openssl_set_iv,          /* */
+    srtp_aes_icm_mbedtls_encrypt,         /* */
+    srtp_aes_icm_mbedtls_encrypt,         /* */
+    srtp_aes_icm_mbedtls_set_iv,          /* */
     0,                                    /* get_tag */
-    srtp_aes_icm_192_openssl_description, /* */
+    srtp_aes_icm_192_mbedtls_description, /* */
     &srtp_aes_icm_192_test_case_0,        /* */
     SRTP_AES_ICM_192                      /* */
 };
@@ -527,15 +551,15 @@ const srtp_cipher_type_t srtp_aes_icm_192 = {
  * note: the encrypt function is identical to the decrypt function
  */
 const srtp_cipher_type_t srtp_aes_icm_256 = {
-    srtp_aes_icm_openssl_alloc,           /* */
-    srtp_aes_icm_openssl_dealloc,         /* */
-    srtp_aes_icm_openssl_context_init,    /* */
+    srtp_aes_icm_mbedtls_alloc,           /* */
+    srtp_aes_icm_mbedtls_dealloc,         /* */
+    srtp_aes_icm_mbedtls_context_init,    /* */
     0,                                    /* set_aad */
-    srtp_aes_icm_openssl_encrypt,         /* */
-    srtp_aes_icm_openssl_encrypt,         /* */
-    srtp_aes_icm_openssl_set_iv,          /* */
+    srtp_aes_icm_mbedtls_encrypt,         /* */
+    srtp_aes_icm_mbedtls_encrypt,         /* */
+    srtp_aes_icm_mbedtls_set_iv,          /* */
     0,                                    /* get_tag */
-    srtp_aes_icm_256_openssl_description, /* */
+    srtp_aes_icm_256_mbedtls_description, /* */
     &srtp_aes_icm_256_test_case_0,        /* */
     SRTP_AES_ICM_256                      /* */
 };
