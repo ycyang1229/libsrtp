@@ -8,6 +8,8 @@ set(PACKAGE_STRING "${CMAKE_PROJECT_NAME} ${PACKAGE_VERSION}")
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third-party/usr/local;${CMAKE_MODULE_PATH}")
 set(CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third-party/usr/local;${CMAKE_PREFIX_PATH}")
 message("CMAKE_MODULE_PATH: ${CMAKE_MODULE_PATH}")
+message("CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
+message("CMAKE_INCLUDE_PATH: ${CMAKE_INCLUDE_PATH}")
 include(TestBigEndian)
 include(CheckIncludeFile)
 include(CheckFunctionExists)
@@ -68,8 +70,8 @@ endif()
 
 if(ENABLE_MBEDTLS)
   find_package(MbedTLS REQUIRED)
-  include_directories(${MBEDTLS_INCLUDE_DIR})
-  message("MBEDTLS_INCLUDE_DIR: ${MBEDTLS_INCLUDE_DIR}")
+  include_directories(${MBEDTLS_INCLUDE_DIRS})
+  message("MBEDTLS_INCLUDE_DIRS: ${MBEDTLS_INCLUDE_DIRS}")
 endif()
 
 set(OPENSSL ${ENABLE_OPENSSL} CACHE BOOL INTERNAL)
@@ -101,7 +103,7 @@ if(ENABLE_OPENSSL)
 elseif(ENABLE_MBEDTLS)
   list(APPEND CIPHERS_SOURCES_C
     crypto/cipher/aes_icm_mbedtls.c
-    crypto/cipher/aes_gcm_mbedtls.c
+    #crypto/cipher/aes_gcm_mbedtls.c
   )
 else()
   list(APPEND  CIPHERS_SOURCES_C
@@ -197,6 +199,9 @@ add_library(srtp2
 target_include_directories(srtp2 PUBLIC crypto/include include)
 if(ENABLE_OPENSSL)
   target_link_libraries(srtp2 OpenSSL::Crypto)
+endif()
+if(ENABLE_MBEDTLS)
+  target_link_libraries(srtp2 ${MBEDTLS_LIBRARIES})
 endif()
 if(WIN32)
   target_link_libraries(srtp2 ws2_32)

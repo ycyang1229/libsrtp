@@ -48,6 +48,8 @@
 #include <config.h>
 #endif
 // https://tls.mbed.org/api/gcm_8h.html#ac3f60a663c6b01ef6d977ac06aac57df
+// https://gist.github.com/unprovable/892a677d672990f46bca97194ae549bc
+// https://tls.mbed.org/discussions/generic/aes-gcm-authenticated-encryption-example
 #include <openssl/evp.h>
 #include "aes_gcm.h"
 #include "alloc.h"
@@ -109,7 +111,9 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_alloc(srtp_cipher_t **c,
         return (srtp_err_status_alloc_fail);
     }
     // #YC_TBD.
-    gcm->ctx = EVP_CIPHER_CTX_new();
+    // gcm->ctx = EVP_CIPHER_CTX_new();
+    gcm->ctx =
+        (mbedtls_aes_context *)srtp_crypto_alloc(sizeof(mbedtls_aes_context));
     if (gcm->ctx == NULL) {
         srtp_crypto_free(gcm);
         srtp_crypto_free(*c);
@@ -152,7 +156,8 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_dealloc(srtp_cipher_t *c)
     ctx = (srtp_aes_gcm_ctx_t *)c->state;
     if (ctx) {
         // #YC_TBD.
-        EVP_CIPHER_CTX_free(ctx->ctx);
+        // EVP_CIPHER_CTX_free(ctx->ctx);
+        srtp_crypto_free(ctx->ctx);
         /* zeroize the key material */
         octet_string_set_to_zero(ctx, sizeof(srtp_aes_gcm_ctx_t));
         srtp_crypto_free(ctx);
@@ -222,14 +227,14 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_set_iv(
     debug_print(srtp_mod_aes_gcm, "setting iv: %s",
                 srtp_octet_string_hex_string(iv, 12));
 
-    if (!EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_SET_IVLEN, 12, 0)) {
-        return (srtp_err_status_init_fail);
-    }
+    // if (!EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_SET_IVLEN, 12, 0)) {
+    //    return (srtp_err_status_init_fail);
+    //}
 
-    if (!EVP_CipherInit_ex(c->ctx, NULL, NULL, NULL, iv,
-                           (c->dir == srtp_direction_encrypt ? 1 : 0))) {
-        return (srtp_err_status_init_fail);
-    }
+    // if (!EVP_CipherInit_ex(c->ctx, NULL, NULL, NULL, iv,
+    //                       (c->dir == srtp_direction_encrypt ? 1 : 0))) {
+    //    return (srtp_err_status_init_fail);
+    //}
 
     return (srtp_err_status_ok);
 }

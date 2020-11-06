@@ -121,7 +121,9 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_alloc(srtp_cipher_t **c,
      * Verify the key_len is valid for one of: AES-128/192/256
      */
     if (key_len != SRTP_AES_ICM_128_KEY_LEN_WSALT &&
+#ifdef GCM
         key_len != SRTP_AES_ICM_192_KEY_LEN_WSALT &&
+#endif
         key_len != SRTP_AES_ICM_256_KEY_LEN_WSALT) {
         return srtp_err_status_bad_param;
     }
@@ -159,11 +161,13 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_alloc(srtp_cipher_t **c,
         (*c)->type = &srtp_aes_icm_128;
         icm->key_size = SRTP_AES_128_KEY_LEN;
         break;
+#ifdef GCM
     case SRTP_AES_ICM_192_KEY_LEN_WSALT:
         (*c)->algorithm = SRTP_AES_ICM_192;
         (*c)->type = &srtp_aes_icm_192;
         icm->key_size = SRTP_AES_192_KEY_LEN;
         break;
+#endif
     case SRTP_AES_ICM_256_KEY_LEN_WSALT:
         (*c)->algorithm = SRTP_AES_ICM_256;
         (*c)->type = &srtp_aes_icm_256;
@@ -220,7 +224,8 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_context_init(void *cv,
                                                            const uint8_t *key)
 {
     srtp_aes_icm_ctx_t *c = (srtp_aes_icm_ctx_t *)cv;
-    const EVP_CIPHER *evp;
+    // const EVP_CIPHER *evp;
+    uint32_t key_size_in_bits = (c->key_size << 3);
 
     /*
      * set counter and initial values to 'offset' value, being careful not to
@@ -238,19 +243,16 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_context_init(void *cv,
     debug_print(srtp_mod_aes_icm, "key:  %s",
                 srtp_octet_string_hex_string(key, c->key_size));
     debug_print(srtp_mod_aes_icm, "offset: %s", v128_hex_string(&c->offset));
+    debug_print(srtp_mod_aes_icm, "key_size_in_bits: %d", key_size_in_bits);
     // #YC_TBD.
 
     // mbedtls_aes_setkey_enc
     // mbedtls_aes_crypt_ctr
     switch (c->key_size) {
     case SRTP_AES_256_KEY_LEN:
-        evp = EVP_aes_256_ctr();
-        break;
-    case SRTP_AES_192_KEY_LEN:
-        evp = EVP_aes_192_ctr();
-        break;
+    // case SRTP_AES_192_KEY_LEN:
     case SRTP_AES_128_KEY_LEN:
-        evp = EVP_aes_128_ctr();
+        // evp = EVP_aes_128_ctr();
         break;
     default:
         return srtp_err_status_bad_param;
@@ -262,6 +264,8 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_context_init(void *cv,
     // mbedtls_aes_init
     mbedtls_aes_init(c->ctx);
     // set key
+    memcpy(c->key, key, c->key_size);
+    mbedtls_aes_setkey_enc(c->ctx, key, key_size_in_bits);
     // if (!EVP_EncryptInit_ex(c->ctx, evp, NULL, key, NULL)) {
     //    return srtp_err_status_fail;
     //} else {
@@ -294,15 +298,13 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_set_iv(
                 v128_hex_string(&c->counter));
     // https://wiki.openssl.org/index.php/EVP_Symmetric_Encryption_and_Decryption
     // set iv.
-    if (!EVP_EncryptInit_ex(c->ctx, NULL, NULL, NULL, c->counter.v8)) {
-        return srtp_err_status_fail;
-    } else {
-        return srtp_err_status_ok;
-    }
+
+    return srtp_err_status_ok;
 }
 
 /*
  * This function encrypts a buffer using AES CTR mode
+ * https://tls.mbed.org/discussions/crypto-and-ssl/aes-ctr-stream-block-usage
  *
  * Parameters:
  *	c	Crypto context
@@ -314,29 +316,23 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_encrypt(void *cv,
                                                       unsigned int *enc_len)
 {
     srtp_aes_icm_ctx_t *c = (srtp_aes_icm_ctx_t *)cv;
-    int len = 0;
+    int len = *enc_len;
 
     debug_print(srtp_mod_aes_icm, "rs0: %s", v128_hex_string(&c->counter));
 
-    if (!EVP_EncryptUpdate(c->ctx, buf, &len, buf, *enc_len)) {
-        return srtp_err_status_cipher_fail;
-    }
-    *enc_len = len;
+    // if (!EVP_EncryptUpdate(c->ctx, buf, &len, buf, *enc_len)) {
+    //    return srtp_err_status_cipher_fail;
+    //}
+
     // mbedtls_aes_crypt_ctr
-    /**
-     *
-    int mbedtls_aes_crypt_ctr( mbedtls_aes_context *ctx,
-                       size_t length,
-                       size_t *nc_off,
-                       unsigned char nonce_counter[16],
-                       unsigned char stream_block[16],
-                       const unsigned char *input,
-                       unsigned char *output );
-    */
-    if (!EVP_EncryptFinal_ex(c->ctx, buf + len, &len)) {
-        return srtp_err_status_cipher_fail;
-    }
-    *enc_len += len;
+
+    mbedtls_aes_crypt_ctr(c->ctx, *enc_len, &(c->nc_off), c->counter.v8,
+                          c->stream_block.v8, buf, buf);
+
+    // if (!EVP_EncryptFinal_ex(c->ctx, buf + len, &len)) {
+    //    return srtp_err_status_cipher_fail;
+    //}
+    *enc_len = len;
 
     return srtp_err_status_ok;
 }
@@ -346,8 +342,10 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_encrypt(void *cv,
  */
 static const char srtp_aes_icm_128_mbedtls_description[] =
     "AES-128 counter mode using mbedtls";
+#ifdef GCM
 static const char srtp_aes_icm_192_mbedtls_description[] =
     "AES-192 counter mode using mbedtls";
+#endif
 static const char srtp_aes_icm_256_mbedtls_description[] =
     "AES-256 counter mode using mbedtls";
 
@@ -402,7 +400,7 @@ static const srtp_cipher_test_case_t srtp_aes_icm_128_test_case_0 = {
     0,                                       /* */
     NULL                                     /* pointer to next testcase */
 };
-
+#ifdef GCM
 /*
  * KAT values for AES-192-CTR self-test.  These
  * values came from section 7 of RFC 6188.
@@ -455,7 +453,7 @@ static const srtp_cipher_test_case_t srtp_aes_icm_192_test_case_0 = {
     0,                                       /* */
     NULL                                     /* pointer to next testcase */
 };
-
+#endif
 /*
  * KAT values for AES-256-CTR self-test.  These
  * values came from section 7 of RFC 6188.
@@ -527,7 +525,7 @@ const srtp_cipher_type_t srtp_aes_icm_128 = {
     &srtp_aes_icm_128_test_case_0,        /* */
     SRTP_AES_ICM_128                      /* */
 };
-
+#ifdef GCM
 /*
  * This is the function table for this crypto engine.
  * note: the encrypt function is identical to the decrypt function
@@ -545,7 +543,7 @@ const srtp_cipher_type_t srtp_aes_icm_192 = {
     &srtp_aes_icm_192_test_case_0,        /* */
     SRTP_AES_ICM_192                      /* */
 };
-
+#endif
 /*
  * This is the function table for this crypto engine.
  * note: the encrypt function is identical to the decrypt function
