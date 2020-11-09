@@ -103,7 +103,7 @@ if(ENABLE_OPENSSL)
 elseif(ENABLE_MBEDTLS)
   list(APPEND CIPHERS_SOURCES_C
     crypto/cipher/aes_icm_mbedtls.c
-    #crypto/cipher/aes_gcm_mbedtls.c
+    crypto/cipher/aes_gcm_mbedtls.c
   )
 else()
   list(APPEND  CIPHERS_SOURCES_C

@@ -65,13 +65,14 @@ typedef struct {
 #endif /* OPENSSL */
 
 #ifdef MBEDTLS
-// 1#YC_TBD.
+// #YC_TBD.
 #include <mbedtls/aes.h>
 
 typedef struct {
     int key_size;
     int tag_len;
-    mbedtls_aes_context *ctx;
+    //mbedtls_aes_context *ctx;
+    mbedtls_gcm_context *ctx;
     srtp_cipher_direction_t dir;
 } srtp_aes_gcm_ctx_t;
 

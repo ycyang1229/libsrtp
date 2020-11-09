@@ -113,7 +113,7 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_alloc(srtp_cipher_t **c,
     // #YC_TBD.
     // gcm->ctx = EVP_CIPHER_CTX_new();
     gcm->ctx =
-        (mbedtls_aes_context *)srtp_crypto_alloc(sizeof(mbedtls_aes_context));
+        (mbedtls_gcm_context *)srtp_crypto_alloc(sizeof(mbedtls_gcm_context));
     if (gcm->ctx == NULL) {
         srtp_crypto_free(gcm);
         srtp_crypto_free(*c);
@@ -179,20 +179,16 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_context_init(void *cv,
                                                            const uint8_t *key)
 {
     srtp_aes_gcm_ctx_t *c = (srtp_aes_gcm_ctx_t *)cv;
-    // #YC_TBD.
-    const EVP_CIPHER *evp;
+    uint32_t key_len_in_bits;
 
     c->dir = srtp_direction_any;
 
     debug_print(srtp_mod_aes_gcm, "key:  %s",
                 srtp_octet_string_hex_string(key, c->key_size));
-
+    key_len_in_bits = (c->key_size<<3);
     switch (c->key_size) {
     case SRTP_AES_256_KEY_LEN:
-        evp = EVP_aes_256_gcm();
-        break;
     case SRTP_AES_128_KEY_LEN:
-        evp = EVP_aes_128_gcm();
         break;
     default:
         return (srtp_err_status_bad_param);
@@ -200,10 +196,13 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_context_init(void *cv,
     }
 
     EVP_CIPHER_CTX_cleanup(c->ctx);
-    if (!EVP_CipherInit_ex(c->ctx, evp, NULL, key, NULL, 0)) {
-        return (srtp_err_status_init_fail);
-    }
+    mbedtls_gcm_free(c->ctx);
+    
+    mbedtls_gcm_init(c->ctx);
+    // https://tls.mbed.org/api/gcm_8h.html#ae87d2c58882a11976fdc6a30f6f0ae6f
+    mbedtls_gcm_setkey(c->ctx, MBEDTLS_CIPHER_ID_AES , (const unsigned char*) key, key_len_in_bits);
 
+    
     return (srtp_err_status_ok);
 }
 
