@@ -47,10 +47,11 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
-// https://tls.mbed.org/api/gcm_8h.html#ac3f60a663c6b01ef6d977ac06aac57df
+// https://tls.mbed.org/api/gcm_8h.html
 // https://gist.github.com/unprovable/892a677d672990f46bca97194ae549bc
 // https://tls.mbed.org/discussions/generic/aes-gcm-authenticated-encryption-example
-#include <openssl/evp.h>
+#include <mbedtls/aes.h>
+#include <mbedtls/gcm.h>
 #include "aes_gcm.h"
 #include "alloc.h"
 #include "err.h" /* for srtp_debug */
@@ -62,13 +63,36 @@ srtp_debug_module_t srtp_mod_aes_gcm = {
     "aes gcm" /* printable module name       */
 };
 
+/**
+ * SRTP IV Formation for AES-GCM
+ * https://tools.ietf.org/html/rfc7714#section-8.1
+ *   0  0  0  0  0  0  0  0  0  0  1  1
+ *   0  1  2  3  4  5  6  7  8  9  0  1
+ *  +--+--+--+--+--+--+--+--+--+--+--+--+
+ *  |00|00| SSRC      | ROC       | SEQ |---+
+ *  +--+--+--+--+--+--+--+--+--+--+--+--+   |
+ *  |
+ *  +--+--+--+--+--+--+--+--+--+--+--+--+   |
+ *  | Encryption Salt                   |->(+)
+ *  +--+--+--+--+--+--+--+--+--+--+--+--+   |
+ *                                          |
+ *  +--+--+--+--+--+--+--+--+--+--+--+--+   |
+ *  | Initialization Vector             |<--+
+ *  +--+--+--+--+--+--+--+--+--+--+--+--+
+ * 
+ * SRTCP IV Formation for AES-GCM
+ * https://tools.ietf.org/html/rfc7714#section-9.1
+ * 
+*/
+
+
 /*
  * For now we only support 8 and 16 octet tags.  The spec allows for
  * optional 12 byte tag, which may be supported in the future.
  */
+#define GCM_IV_LEN 12
 #define GCM_AUTH_TAG_LEN 16
 #define GCM_AUTH_TAG_LEN_8 8
-
 /*
  * This function allocates a new instance of this crypto engine.
  * The key_len parameter should be one of 28 or 44 for
@@ -195,7 +219,7 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_context_init(void *cv,
         break;
     }
 
-    EVP_CIPHER_CTX_cleanup(c->ctx);
+    //EVP_CIPHER_CTX_cleanup(c->ctx);
     mbedtls_gcm_free(c->ctx);
     
     mbedtls_gcm_init(c->ctx);
@@ -224,7 +248,7 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_set_iv(
     c->dir = direction;
 
     debug_print(srtp_mod_aes_gcm, "setting iv: %s",
-                srtp_octet_string_hex_string(iv, 12));
+                srtp_octet_string_hex_string(iv, GCM_IV_LEN));
 
     // if (!EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_SET_IVLEN, 12, 0)) {
     //    return (srtp_err_status_init_fail);
@@ -234,6 +258,9 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_set_iv(
     //                       (c->dir == srtp_direction_encrypt ? 1 : 0))) {
     //    return (srtp_err_status_init_fail);
     //}
+    //https://tls.mbed.org/api/gcm_8h.html#a1fc3a11f761e37d515e013d8c8f8975f
+    mbedtls_gcm_starts(c->ctx, (c->dir == srtp_direction_encrypt ? MBEDTLS_GCM_ENCRYPT : MBEDTLS_GCM_DECRYPT), 
+                        (const unsigned char*)iv, GCM_IV_LEN, NULL, 0);
 
     return (srtp_err_status_ok);
 }
@@ -251,7 +278,7 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_set_aad(void *cv,
                                                       uint32_t aad_len)
 {
     srtp_aes_gcm_ctx_t *c = (srtp_aes_gcm_ctx_t *)cv;
-    int rv;
+    int rv = 0;
 
     debug_print(srtp_mod_aes_gcm, "setting AAD: %s",
                 srtp_octet_string_hex_string(aad, aad_len));
@@ -269,9 +296,9 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_set_aad(void *cv,
      */
     unsigned char dummy_tag[GCM_AUTH_TAG_LEN];
     memset(dummy_tag, 0x0, GCM_AUTH_TAG_LEN);
-    EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_SET_TAG, c->tag_len, &dummy_tag);
+    //EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_SET_TAG, c->tag_len, &dummy_tag);
 
-    rv = EVP_Cipher(c->ctx, NULL, aad, aad_len);
+    //rv = EVP_Cipher(c->ctx, NULL, aad, aad_len);
     if (rv != aad_len) {
         return (srtp_err_status_algo_fail);
     } else {
@@ -300,7 +327,9 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_encrypt(void *cv,
      * Encrypt the data
      */
     // #YC_TBD.
-    EVP_Cipher(c->ctx, buf, buf, *enc_len);
+    //EVP_Cipher(c->ctx, buf, buf, *enc_len);
+    //mbedtls_gcm_crypt_and_tag
+    mbedtls_gcm_update(c->ctx, *enc_len,(const unsigned char*)buf, buf);
 
     return (srtp_err_status_ok);
 }
@@ -325,12 +354,12 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_get_tag(void *cv,
      * Calculate the tag
      */
     // #YC_TBD.
-    EVP_Cipher(c->ctx, NULL, NULL, 0);
+    //EVP_Cipher(c->ctx, NULL, NULL, 0);
 
     /*
      * Retreive the tag
      */
-    EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_GET_TAG, c->tag_len, buf);
+    //EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_GET_TAG, c->tag_len, buf);
 
     /*
      * Increase encryption length by desired tag size
@@ -360,16 +389,16 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_decrypt(void *cv,
     /*
      * Set the tag before decrypting
      */
-    EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_SET_TAG, c->tag_len,
-                        buf + (*enc_len - c->tag_len));
-    EVP_Cipher(c->ctx, buf, buf, *enc_len - c->tag_len);
+    //EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_SET_TAG, c->tag_len,
+    //                    buf + (*enc_len - c->tag_len));
+    //EVP_Cipher(c->ctx, buf, buf, *enc_len - c->tag_len);
 
     /*
      * Check the tag
      */
-    if (EVP_Cipher(c->ctx, NULL, NULL, 0)) {
+    //if (EVP_Cipher(c->ctx, NULL, NULL, 0)) {
         return (srtp_err_status_auth_fail);
-    }
+    //}
 
     /*
      * Reduce the buffer size by the tag length since the tag

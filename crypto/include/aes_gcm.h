@@ -67,6 +67,7 @@ typedef struct {
 #ifdef MBEDTLS
 // #YC_TBD.
 #include <mbedtls/aes.h>
+#include <mbedtls/gcm.h>
 
 typedef struct {
     int key_size;

@@ -71,7 +71,6 @@ typedef struct {
     v128_t stream_block;
     size_t nc_off;
     int key_size;
-    uint8_t *key;
     mbedtls_aes_context *ctx;
 } srtp_aes_icm_ctx_t;
 
