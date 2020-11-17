@@ -1798,6 +1798,7 @@ static srtp_err_status_t srtp_protect_aead(srtp_ctx_t *ctx,
 
     /*
      * Set the AAD over the RTP header
+     * The AAD includes the header and payload of rtp.
      */
     aad_len = (uint8_t *)enc_start - (uint8_t *)hdr;
     status =

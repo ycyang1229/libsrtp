@@ -47,10 +47,6 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
-// https://tls.mbed.org/api/gcm_8h.html
-// https://gist.github.com/unprovable/892a677d672990f46bca97194ae549bc
-// https://tls.mbed.org/discussions/generic/aes-gcm-authenticated-encryption-example
-#include <mbedtls/aes.h>
 #include <mbedtls/gcm.h>
 #include "aes_gcm.h"
 #include "alloc.h"
@@ -60,7 +56,7 @@
 
 srtp_debug_module_t srtp_mod_aes_gcm = {
     0,        /* debugging is off by default */
-    "aes gcm" /* printable module name       */
+    "aes gcm mbedtls" /* printable module name       */
 };
 
 /**
@@ -85,7 +81,6 @@ srtp_debug_module_t srtp_mod_aes_gcm = {
  * 
 */
 
-
 /*
  * For now we only support 8 and 16 octet tags.  The spec allows for
  * optional 12 byte tag, which may be supported in the future.
@@ -93,6 +88,8 @@ srtp_debug_module_t srtp_mod_aes_gcm = {
 #define GCM_IV_LEN 12
 #define GCM_AUTH_TAG_LEN 16
 #define GCM_AUTH_TAG_LEN_8 8
+
+#define FUNC_ENTRY() debug_print(srtp_mod_aes_gcm, "%s entry", __func__);
 /*
  * This function allocates a new instance of this crypto engine.
  * The key_len parameter should be one of 28 or 44 for
@@ -104,6 +101,7 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_alloc(srtp_cipher_t **c,
                                                     int key_len,
                                                     int tlen)
 {
+    FUNC_ENTRY();
     srtp_aes_gcm_ctx_t *gcm;
 
     debug_print(srtp_mod_aes_gcm, "allocating cipher with key length %d",
@@ -134,8 +132,7 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_alloc(srtp_cipher_t **c,
         *c = NULL;
         return (srtp_err_status_alloc_fail);
     }
-    // #YC_TBD.
-    // gcm->ctx = EVP_CIPHER_CTX_new();
+
     gcm->ctx =
         (mbedtls_gcm_context *)srtp_crypto_alloc(sizeof(mbedtls_gcm_context));
     if (gcm->ctx == NULL) {
@@ -144,6 +141,7 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_alloc(srtp_cipher_t **c,
         *c = NULL;
         return srtp_err_status_alloc_fail;
     }
+    mbedtls_gcm_init(gcm->ctx);
 
     /* set pointers */
     (*c)->state = gcm;
@@ -176,11 +174,10 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_alloc(srtp_cipher_t **c,
 static srtp_err_status_t srtp_aes_gcm_mbedtls_dealloc(srtp_cipher_t *c)
 {
     srtp_aes_gcm_ctx_t *ctx;
-
+    FUNC_ENTRY();
     ctx = (srtp_aes_gcm_ctx_t *)c->state;
     if (ctx) {
-        // #YC_TBD.
-        // EVP_CIPHER_CTX_free(ctx->ctx);
+        mbedtls_gcm_free(ctx->ctx);
         srtp_crypto_free(ctx->ctx);
         /* zeroize the key material */
         octet_string_set_to_zero(ctx, sizeof(srtp_aes_gcm_ctx_t));
@@ -202,10 +199,12 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_dealloc(srtp_cipher_t *c)
 static srtp_err_status_t srtp_aes_gcm_mbedtls_context_init(void *cv,
                                                            const uint8_t *key)
 {
+    FUNC_ENTRY();
     srtp_aes_gcm_ctx_t *c = (srtp_aes_gcm_ctx_t *)cv;
     uint32_t key_len_in_bits;
-
+    int errCode = 0;
     c->dir = srtp_direction_any;
+    c->aad_size = 0;
 
     debug_print(srtp_mod_aes_gcm, "key:  %s",
                 srtp_octet_string_hex_string(key, c->key_size));
@@ -219,14 +218,12 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_context_init(void *cv,
         break;
     }
 
-    //EVP_CIPHER_CTX_cleanup(c->ctx);
-    mbedtls_gcm_free(c->ctx);
-    
-    mbedtls_gcm_init(c->ctx);
-    // https://tls.mbed.org/api/gcm_8h.html#ae87d2c58882a11976fdc6a30f6f0ae6f
-    mbedtls_gcm_setkey(c->ctx, MBEDTLS_CIPHER_ID_AES , (const unsigned char*) key, key_len_in_bits);
+    errCode = mbedtls_gcm_setkey(c->ctx, MBEDTLS_CIPHER_ID_AES , (const unsigned char*) key, key_len_in_bits);
+    if(errCode != 0){
+        debug_print(srtp_mod_aes_gcm, "mbedtls error code:  %d", errCode);
+        return srtp_err_status_init_fail;
+    }
 
-    
     return (srtp_err_status_ok);
 }
 
@@ -239,6 +236,7 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_set_iv(
     uint8_t *iv,
     srtp_cipher_direction_t direction)
 {
+    FUNC_ENTRY();
     srtp_aes_gcm_ctx_t *c = (srtp_aes_gcm_ctx_t *)cv;
 
     if (direction != srtp_direction_encrypt &&
@@ -249,19 +247,8 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_set_iv(
 
     debug_print(srtp_mod_aes_gcm, "setting iv: %s",
                 srtp_octet_string_hex_string(iv, GCM_IV_LEN));
-
-    // if (!EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_SET_IVLEN, 12, 0)) {
-    //    return (srtp_err_status_init_fail);
-    //}
-
-    // if (!EVP_CipherInit_ex(c->ctx, NULL, NULL, NULL, iv,
-    //                       (c->dir == srtp_direction_encrypt ? 1 : 0))) {
-    //    return (srtp_err_status_init_fail);
-    //}
-    //https://tls.mbed.org/api/gcm_8h.html#a1fc3a11f761e37d515e013d8c8f8975f
-    mbedtls_gcm_starts(c->ctx, (c->dir == srtp_direction_encrypt ? MBEDTLS_GCM_ENCRYPT : MBEDTLS_GCM_DECRYPT), 
-                        (const unsigned char*)iv, GCM_IV_LEN, NULL, 0);
-
+    c->iv_len = GCM_IV_LEN;
+    memcpy(c->iv, iv, c->iv_len);
     return (srtp_err_status_ok);
 }
 
@@ -277,33 +264,22 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_set_aad(void *cv,
                                                       const uint8_t *aad,
                                                       uint32_t aad_len)
 {
+    FUNC_ENTRY();
+    int errCode = 0;
     srtp_aes_gcm_ctx_t *c = (srtp_aes_gcm_ctx_t *)cv;
-    int rv = 0;
 
     debug_print(srtp_mod_aes_gcm, "setting AAD: %s",
                 srtp_octet_string_hex_string(aad, aad_len));
 
-    /*
-     * Set dummy tag, OpenSSL requires the Tag to be set before
-     * processing AAD
-     */
-
-    /*
-     * OpenSSL never write to address pointed by the last parameter of
-     * EVP_CIPHER_CTX_ctrl while EVP_CTRL_GCM_SET_TAG (in reality,
-     * OpenSSL copy its content to the context), so we can make
-     * aad read-only in this function and all its wrappers.
-     */
-    unsigned char dummy_tag[GCM_AUTH_TAG_LEN];
-    memset(dummy_tag, 0x0, GCM_AUTH_TAG_LEN);
-    //EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_SET_TAG, c->tag_len, &dummy_tag);
-
-    //rv = EVP_Cipher(c->ctx, NULL, aad, aad_len);
-    if (rv != aad_len) {
-        return (srtp_err_status_algo_fail);
-    } else {
-        return (srtp_err_status_ok);
+    if (aad_len + c->aad_size > MAX_AD_SIZE) {
+        return srtp_err_status_bad_param;
     }
+
+    memcpy(c->aad + c->aad_size, aad, aad_len);
+    c->aad_size += aad_len;
+
+    return (srtp_err_status_ok);
+
 }
 
 /*
@@ -318,18 +294,31 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_encrypt(void *cv,
                                                       unsigned char *buf,
                                                       unsigned int *enc_len)
 {
+    FUNC_ENTRY();
     srtp_aes_gcm_ctx_t *c = (srtp_aes_gcm_ctx_t *)cv;
+    int errCode = 0;
+
     if (c->dir != srtp_direction_encrypt && c->dir != srtp_direction_decrypt) {
         return (srtp_err_status_bad_param);
     }
 
-    /*
-     * Encrypt the data
-     */
-    // #YC_TBD.
-    //EVP_Cipher(c->ctx, buf, buf, *enc_len);
-    //mbedtls_gcm_crypt_and_tag
-    mbedtls_gcm_update(c->ctx, *enc_len,(const unsigned char*)buf, buf);
+    errCode = mbedtls_gcm_crypt_and_tag(c->ctx,
+                                MBEDTLS_GCM_ENCRYPT,
+                                *enc_len,
+                                c->iv,
+                                c->iv_len,
+                                c->aad,
+                                c->aad_size,
+                                buf,
+                                buf,
+                                c->tag_len,
+                                c->tag);
+
+    c->aad_size = 0;
+    if(errCode != 0){
+        debug_print(srtp_mod_aes_gcm, "mbedtls error code:  %d", errCode);
+        return srtp_err_status_bad_param;
+    }
 
     return (srtp_err_status_ok);
 }
@@ -349,23 +338,11 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_get_tag(void *cv,
                                                       uint8_t *buf,
                                                       uint32_t *len)
 {
+    FUNC_ENTRY();
     srtp_aes_gcm_ctx_t *c = (srtp_aes_gcm_ctx_t *)cv;
-    /*
-     * Calculate the tag
-     */
-    // #YC_TBD.
-    //EVP_Cipher(c->ctx, NULL, NULL, 0);
-
-    /*
-     * Retreive the tag
-     */
-    //EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_GET_TAG, c->tag_len, buf);
-
-    /*
-     * Increase encryption length by desired tag size
-     */
+    debug_print(srtp_mod_aes_gcm, "appended tag size:  %d", c->tag_len);
     *len = c->tag_len;
-
+    memcpy(buf, c->tag, c->tag_len);
     return (srtp_err_status_ok);
 }
 
@@ -381,24 +358,32 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_decrypt(void *cv,
                                                       unsigned char *buf,
                                                       unsigned int *enc_len)
 {
+    FUNC_ENTRY();
     srtp_aes_gcm_ctx_t *c = (srtp_aes_gcm_ctx_t *)cv;
+    int errCode = 0;
+    int len = *enc_len;
+
     if (c->dir != srtp_direction_encrypt && c->dir != srtp_direction_decrypt) {
         return (srtp_err_status_bad_param);
     }
 
-    /*
-     * Set the tag before decrypting
-     */
-    //EVP_CIPHER_CTX_ctrl(c->ctx, EVP_CTRL_GCM_SET_TAG, c->tag_len,
-    //                    buf + (*enc_len - c->tag_len));
-    //EVP_Cipher(c->ctx, buf, buf, *enc_len - c->tag_len);
+    debug_print(srtp_mod_aes_gcm, "AAD: %s",
+                srtp_octet_string_hex_string(c->aad, c->aad_size));
 
-    /*
-     * Check the tag
-     */
-    //if (EVP_Cipher(c->ctx, NULL, NULL, 0)) {
+    errCode = mbedtls_gcm_auth_decrypt(c->ctx,
+                                        (*enc_len - c->tag_len),
+                                        c->iv,
+                                        c->iv_len,
+                                        c->aad,
+                                        c->aad_size,
+                                        buf + (*enc_len - c->tag_len),
+                                        c->tag_len,
+                                        buf,
+                                        buf);
+    c->aad_size = 0;
+    if (errCode != 0) {
         return (srtp_err_status_auth_fail);
-    //}
+    }
 
     /*
      * Reduce the buffer size by the tag length since the tag

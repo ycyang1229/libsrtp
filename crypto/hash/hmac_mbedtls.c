@@ -49,7 +49,6 @@
 #include "auth.h"
 #include "alloc.h"
 #include "err.h" /* for srtp_debug */
-// https://tls.mbed.org/api/md_8h.html#details
 #include "mbedtls/md.h"
 
 #define SHA1_DIGEST_SIZE 20
@@ -92,7 +91,6 @@ static srtp_err_status_t srtp_hmac_mbedtls_alloc(srtp_auth_t **a,
         *a = NULL;
         return srtp_err_status_alloc_fail;
     }
-    // https://tls.mbed.org/api/md_8h.html#ad8b02927ca10552e3cbf293fa8c10e24
     mbedtls_md_init((mbedtls_md_context_t*)(*a)->state);
 
     /* set pointers */
@@ -108,7 +106,6 @@ static srtp_err_status_t srtp_hmac_mbedtls_dealloc(srtp_auth_t *a)
 {
     mbedtls_md_context_t *hmac_ctx;
     hmac_ctx = (mbedtls_md_context_t *)a->state;
-    // https://tls.mbed.org/api/md_8h.html#af3248ddb6ad05035292fa92ac4af2587
     mbedtls_md_free(hmac_ctx);
     srtp_crypto_free(hmac_ctx);
     /* zeroize entire state*/
@@ -123,7 +120,6 @@ static srtp_err_status_t srtp_hmac_mbedtls_dealloc(srtp_auth_t *a)
 static srtp_err_status_t srtp_hmac_mbedtls_start(void *statev)
 {
     mbedtls_md_context_t *state = (mbedtls_md_context_t *)statev;
-    // https://tls.mbed.org/api/md_8h.html#a3a5c64b5bda0f294e917ccd5a8ca234e
     if(mbedtls_md_hmac_reset(state) != 0)
         return srtp_err_status_auth_fail;
 
@@ -137,11 +133,10 @@ static srtp_err_status_t srtp_hmac_mbedtls_init(void *statev,
     mbedtls_md_context_t *state = (mbedtls_md_context_t *)statev;
     const mbedtls_md_info_t *info = NULL;
 
-    // https://tls.mbed.org/api/md_8h.html#aca53b51e0c8eb0e07c7eb4a3e6acfa0d
     info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
     if(info == NULL)
         return srtp_err_status_auth_fail;
-    // https://tls.mbed.org/api/md_8h.html#a1b858111212997b90bd7d2c71010a7ec
+
     if(mbedtls_md_setup(state, info, 1) != 0)
         return srtp_err_status_auth_fail;
 
@@ -149,7 +144,7 @@ static srtp_err_status_t srtp_hmac_mbedtls_init(void *statev,
                 mbedtls_md_get_name(info));
     debug_print(srtp_mod_hmac, "mbedtls setup, size: %d",
                 mbedtls_md_get_size(info));
-    // https://tls.mbed.org/api/md_8h.html#a8968f8659fc277f013374c1bac8d4d1a
+
     if(mbedtls_md_hmac_starts(state, key, key_len) != 0)
         return srtp_err_status_auth_fail;
 
@@ -164,7 +159,7 @@ static srtp_err_status_t srtp_hmac_mbedtls_update(void *statev,
 
     debug_print(srtp_mod_hmac, "input: %s",
                 srtp_octet_string_hex_string(message, msg_octets));
-    // https://tls.mbed.org/api/md_8h.html#a86cbea1c3bcd558a7e185ff8200a29a6
+
     if(mbedtls_md_hmac_update(state, message, msg_octets) != 0)
         return srtp_err_status_auth_fail;
 
@@ -189,7 +184,7 @@ static srtp_err_status_t srtp_hmac_mbedtls_compute(void *statev,
     /* hash message, copy output into H */
     if(mbedtls_md_hmac_update(statev, message, msg_octets) != 0)
         return srtp_err_status_auth_fail;
-    // https://tls.mbed.org/api/md_8h.html#a7aeafef80c89e47ee3033035a6a75a27
+
     if(mbedtls_md_hmac_finish(state, hash_value) != 0)
         return srtp_err_status_auth_fail;
 

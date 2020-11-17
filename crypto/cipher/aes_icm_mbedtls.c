@@ -51,8 +51,6 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
-// https://tls.mbed.org/api/aes_8h.html
-// https://tls.mbed.org/discussions/crypto-and-ssl/aes-ctr-stream-block-usage
 #include <mbedtls/aes.h>
 #include "aes_icm_ext.h"
 #include "crypto_types.h"
@@ -159,7 +157,7 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_alloc(srtp_cipher_t **c,
         *c = NULL;
         return srtp_err_status_alloc_fail;
     }
-    // https://tls.mbed.org/api/aes_8h.html#aa72dac8d698ab861843ef74ce8ebf62c
+
     mbedtls_aes_init(icm->ctx);
 
     /* set pointers */
@@ -296,7 +294,6 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_set_iv(
 
 /*
  * This function encrypts a buffer using AES CTR mode
- * https://tls.mbed.org/discussions/crypto-and-ssl/aes-ctr-stream-block-usage
  *
  * Parameters:
  *	c	Crypto context
@@ -311,7 +308,7 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_encrypt(void *cv,
 
     int errCode = 0;
     debug_print(srtp_mod_aes_icm, "rs0: %s", v128_hex_string(&c->counter));
-    // https://tls.mbed.org/api/aes_8h.html#a375c98cba4c5806d3a39c7d1e1e226da
+
     errCode = mbedtls_aes_crypt_ctr(c->ctx, *enc_len, &(c->nc_off), c->counter.v8,
                           c->stream_block.v8, buf, buf);
     if(errCode != 0){
