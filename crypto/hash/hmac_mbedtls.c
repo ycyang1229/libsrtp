@@ -1,10 +1,9 @@
 /*
- * hmac_ossl.c
+ * hmac_mbedtls.c
  *
- * Implementation of hmac srtp_auth_type_t that leverages OpenSSL
+ * Implementation of hmac srtp_auth_type_t that leverages Mbedtls
  *
- * John A. Foley
- * Cisco Systems, Inc.
+ * YongCheng Yang
  */
 /*
  *

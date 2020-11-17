@@ -1,10 +1,9 @@
 /*
- * aes_gcm_ossl.c
+ * aes_gcm_mbedtls.c
  *
  * AES Galois Counter Mode
  *
- * John A. Foley
- * Cisco Systems, Inc.
+ * YongCheng Yang
  *
  */
 
@@ -190,12 +189,6 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_dealloc(srtp_cipher_t *c)
     return (srtp_err_status_ok);
 }
 
-/*
- * aes_gcm_openssl_context_init(...) initializes the aes_gcm_context
- * using the value in key[].
- *
- * the key is the secret key
- */
 static srtp_err_status_t srtp_aes_gcm_mbedtls_context_init(void *cv,
                                                            const uint8_t *key)
 {
@@ -227,10 +220,6 @@ static srtp_err_status_t srtp_aes_gcm_mbedtls_context_init(void *cv,
     return (srtp_err_status_ok);
 }
 
-/*
- * aes_gcm_openssl_set_iv(c, iv) sets the counter value to the exor of iv with
- * the offset
- */
 static srtp_err_status_t srtp_aes_gcm_mbedtls_set_iv(
     void *cv,
     uint8_t *iv,
@@ -402,11 +391,6 @@ static const char srtp_aes_gcm_128_mbedtls_description[] =
 static const char srtp_aes_gcm_256_mbedtls_description[] =
     "AES-256 GCM using mbedtls";
 
-/*
- * KAT values for AES self-test.  These
- * values we're derived from independent test code
- * using OpenSSL.
- */
 /* clang-format off */
 static const uint8_t srtp_aes_gcm_test_case_0_key[SRTP_AES_GCM_128_KEY_LEN_WSALT] = {
     0xfe, 0xff, 0xe9, 0x92, 0x86, 0x65, 0x73, 0x1c,

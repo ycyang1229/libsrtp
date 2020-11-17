@@ -3,13 +3,7 @@
  *
  * AES Integer Counter Mode
  *
- * John A. Foley
- * Cisco Systems, Inc.
- *
- * 2/24/2012:  This module was modified to use CiscoSSL for AES counter
- *             mode.  Eddy Lem contributed the code to allow this.
- *
- * 12/20/2012: Added support for AES-192 and AES-256.
+ * YongCheng Yang
  */
 
 /*
@@ -217,15 +211,6 @@ static srtp_err_status_t srtp_aes_icm_mbedtls_dealloc(srtp_cipher_t *c)
     return srtp_err_status_ok;
 }
 
-/*
- * aes_icm_openssl_context_init(...) initializes the aes_icm_context
- * using the value in key[].
- *
- * the key is the secret key
- *
- * the salt is unpredictable (but not necessarily secret) data which
- * randomizes the starting point in the keystream
- */
 static srtp_err_status_t srtp_aes_icm_mbedtls_context_init(void *cv,
                                                            const uint8_t *key)
 {
