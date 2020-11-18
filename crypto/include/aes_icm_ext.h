@@ -50,6 +50,7 @@
 #include "datatypes.h"
 
 #ifdef OPENSSL
+
 #include <openssl/evp.h>
 #include <openssl/aes.h>
 
@@ -77,6 +78,7 @@ typedef struct {
 #endif /* MBEDTLS */
 
 #ifdef NSS
+
 #include <nss.h>
 #include <pk11pub.h>
 
